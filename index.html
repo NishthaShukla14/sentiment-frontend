@@ -280,6 +280,18 @@ function Toast({ message, emoji }) {
   );
 }
 
+// ─── SESSION ID (one UUID per browser, persisted in localStorage) ───────────────
+function getSessionId() {
+  const KEY = "sentiment_session_id";
+  let id = localStorage.getItem(KEY);
+  if (!id) {
+    // crypto.randomUUID() is available in all modern browsers
+    id = crypto.randomUUID();
+    localStorage.setItem(KEY, id);
+  }
+  return id;
+}
+
 // ─── STUDENT VOTING VIEW ─────────────────────────────────────────────────────────
 function StudentView() {
   const [toast, setToast] = useState(null);
@@ -287,8 +299,12 @@ function StudentView() {
   const [loadingId, setLoadingId] = useState(null);
   const [error, setError] = useState(null);
 
+  // Persist voted state across page refreshes
+  const [votedFor, setVotedFor] = useState(() => localStorage.getItem("sentiment_voted_for") || null);
+  const hasVoted = !!votedFor;
+
   const handleVote = async (emojiData, e) => {
-    if (loadingId) return;
+    if (loadingId || hasVoted) return;
 
     // Particle burst at click position
     const rect = e.currentTarget.getBoundingClientRect();
@@ -301,18 +317,39 @@ function StudentView() {
     setError(null);
 
     try {
-      const res = await fetch(`${BACKEND_URL}/vote/${emojiData.id}`, { method: "POST" });
+      const res = await fetch(`${BACKEND_URL}/vote/${emojiData.id}`, {
+        method: "POST",
+        headers: { "X-Session-ID": getSessionId() },
+      });
+
+      if (res.status === 409) {
+        // Backend says this session already voted
+        setError("You've already voted in this session!");
+        localStorage.setItem("sentiment_voted_for", emojiData.id);
+        setVotedFor(emojiData.id);
+        setToast({ message: "Already voted!", emoji: "🔒" });
+        setTimeout(() => setToast(null), 3000);
+        return;
+      }
       if (!res.ok) throw new Error("Server error");
+
+      // Success — lock UI
+      localStorage.setItem("sentiment_voted_for", emojiData.id);
+      setVotedFor(emojiData.id);
       setToast({ message: "Vote Cast!", emoji: emojiData.emoji });
       setTimeout(() => setToast(null), 2400);
     } catch (err) {
-      setError("Couldn't reach the server. Is the backend awake?");
-      setToast({ message: "Offline – vote saved locally", emoji: "⚡" });
-      setTimeout(() => setToast(null), 3000);
+      if (err.message !== "Server error") {
+        setError("Couldn't reach the server. Is the backend awake?");
+        setToast({ message: "Network error — try again", emoji: "⚡" });
+        setTimeout(() => setToast(null), 3000);
+      }
     } finally {
       setLoadingId(null);
     }
   };
+
+  const votedEmoji = EMOJIS.find(e => e.id === votedFor);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10 relative">
@@ -330,7 +367,9 @@ function StudentView() {
           How are you feeling<br />
           <span className="grad-text">about the class?</span>
         </h1>
-        <p className="text-white/40 text-sm">Tap your emoji — your response is anonymous</p>
+        <p className="text-white/40 text-sm">
+          {hasVoted ? "Your vote has been recorded ✓" : "Tap your emoji — your response is anonymous"}
+        </p>
       </div>
 
       {/* Error banner */}
@@ -341,34 +380,56 @@ function StudentView() {
         </div>
       )}
 
-      {/* 2x2 Grid */}
-      <div className="grid grid-cols-2 gap-4 w-full max-w-sm relative z-10">
-        {EMOJIS.map((em) => (
-          <button
-            key={em.id}
-            className={`vote-btn glass-strong bg-gradient-to-br ${em.gradient} border ${em.border} ${em.hoverBorder} rounded-3xl p-6 flex flex-col items-center justify-center gap-3 cursor-pointer group`}
-            style={{ minHeight: "150px", boxShadow: loadingId === em.id ? `0 0 30px ${em.glow}` : "none" }}
-            onClick={(e) => handleVote(em, e)}
-            disabled={!!loadingId}
-          >
-            {loadingId === em.id ? (
-              <div className="w-14 h-14 rounded-full border-4 border-white/20 border-t-white animate-spin" />
-            ) : (
-              <span
-                className="text-6xl select-none"
-                style={{ filter: `drop-shadow(0 0 12px ${em.glow})`, transition: "transform 0.2s" }}
-              >
-                {em.emoji}
-              </span>
-            )}
-            <span className="text-white font-bold text-base tracking-wide">{em.label}</span>
-            <div
-              className="w-8 h-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-              style={{ background: em.color }}
-            />
-          </button>
-        ))}
-      </div>
+      {/* Already-voted confirmation card */}
+      {hasVoted && votedEmoji && (
+        <div
+          className="glass-strong rounded-3xl p-8 mb-6 flex flex-col items-center gap-4 max-w-sm w-full relative z-10 border"
+          style={{ borderColor: votedEmoji.color + "66", boxShadow: `0 0 40px ${votedEmoji.glow}` }}
+        >
+          <span className="text-8xl" style={{ filter: `drop-shadow(0 0 20px ${votedEmoji.glow})` }}>
+            {votedEmoji.emoji}
+          </span>
+          <div className="text-center">
+            <p className="text-white font-black text-xl">{votedEmoji.label}</p>
+            <p className="text-white/40 text-sm mt-1">You voted · Thank you!</p>
+          </div>
+          <div className="flex items-center gap-2 glass rounded-full px-4 py-1.5">
+            <span className="text-green-400 text-sm">✓</span>
+            <span className="text-green-400 text-xs font-semibold">Response recorded</span>
+          </div>
+        </div>
+      )}
+
+      {/* 2x2 Grid — dimmed and disabled after voting */}
+      {!hasVoted && (
+        <div className="grid grid-cols-2 gap-4 w-full max-w-sm relative z-10">
+          {EMOJIS.map((em) => (
+            <button
+              key={em.id}
+              className={`vote-btn glass-strong bg-gradient-to-br ${em.gradient} border ${em.border} ${em.hoverBorder} rounded-3xl p-6 flex flex-col items-center justify-center gap-3 cursor-pointer group`}
+              style={{ minHeight: "150px", boxShadow: loadingId === em.id ? `0 0 30px ${em.glow}` : "none" }}
+              onClick={(e) => handleVote(em, e)}
+              disabled={!!loadingId}
+            >
+              {loadingId === em.id ? (
+                <div className="w-14 h-14 rounded-full border-4 border-white/20 border-t-white animate-spin" />
+              ) : (
+                <span
+                  className="text-6xl select-none"
+                  style={{ filter: `drop-shadow(0 0 12px ${em.glow})`, transition: "transform 0.2s" }}
+                >
+                  {em.emoji}
+                </span>
+              )}
+              <span className="text-white font-bold text-base tracking-wide">{em.label}</span>
+              <div
+                className="w-8 h-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                style={{ background: em.color }}
+              />
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Footer */}
       <p className="mt-10 text-white/20 text-xs relative z-10">
