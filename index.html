@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Class Sentiment Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { inter: ['Inter', 'sans-serif'] },
+          animation: {
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'float': 'float 3s ease-in-out infinite',
+            'bar-grow': 'barGrow 0.8s ease-out forwards',
+            'toast-in': 'toastIn 0.3s ease-out forwards',
+            'bounce-in': 'bounceIn 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97)',
+            'glow-pulse': 'glowPulse 2s ease-in-out infinite',
+          },
+          keyframes: {
+            float: { '0%,100%': { transform: 'translateY(0px)' }, '50%': { transform: 'translateY(-8px)' } },
+            barGrow: { from: { transform: 'scaleY(0)', opacity: 0 }, to: { transform: 'scaleY(1)', opacity: 1 } },
+            toastIn: { from: { transform: 'translateY(20px)', opacity: 0 }, to: { transform: 'translateY(0)', opacity: 1 } },
+            bounceIn: { '0%': { transform: 'scale(1)' }, '30%': { transform: 'scale(1.35)' }, '60%': { transform: 'scale(0.9)' }, '100%': { transform: 'scale(1)' } },
+            glowPulse: { '0%,100%': { boxShadow: '0 0 20px currentColor' }, '50%': { boxShadow: '0 0 40px currentColor, 0 0 80px currentColor' } },
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Inter', sans-serif; background: #020817; }
+
+    .glass {
+      background: rgba(255,255,255,0.05);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .glass-strong {
+      background: rgba(255,255,255,0.08);
+      backdrop-filter: blur(30px);
+      -webkit-backdrop-filter: blur(30px);
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+
+    /* Emoji vote button */
+    .vote-btn {
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.15s ease, box-shadow 0.3s ease;
+    }
+    .vote-btn:hover { transform: translateY(-4px) scale(1.03); }
+    .vote-btn:active { transform: scale(0.95); }
+    .vote-btn.clicked { animation: bounceIn 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97); }
+
+    /* Ripple */
+    .ripple {
+      position: absolute;
+      border-radius: 50%;
+      transform: scale(0);
+      animation: rippleAnim 0.6s linear;
+      pointer-events: none;
+    }
+    @keyframes rippleAnim {
+      to { transform: scale(4); opacity: 0; }
+    }
+
+    /* Bar chart */
+    .bar-fill {
+      transition: height 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    /* Particle burst */
+    .particle {
+      position: absolute;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      pointer-events: none;
+      animation: particleBurst 0.7s ease-out forwards;
+    }
+    @keyframes particleBurst {
+      0% { transform: translate(0,0) scale(1); opacity: 1; }
+      100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+
+    /* Background orbs */
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Shimmer on skeleton */
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .shimmer {
+      background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+
+    /* Animated gradient text */
+    .grad-text {
+      background: linear-gradient(135deg, #a78bfa, #60a5fa, #34d399, #f472b6);
+      background-size: 300% 300%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: gradShift 4s ease infinite;
+    }
+    @keyframes gradShift {
+      0%,100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    /* Toggle switch */
+    .toggle-track {
+      width: 56px; height: 28px;
+      background: rgba(167,139,250,0.3);
+      border-radius: 14px;
+      position: relative;
+      cursor: pointer;
+      transition: background 0.3s;
+      border: 1px solid rgba(167,139,250,0.5);
+    }
+    .toggle-track.on { background: rgba(167,139,250,0.6); }
+    .toggle-thumb {
+      width: 22px; height: 22px;
+      background: white;
+      border-radius: 50%;
+      position: absolute;
+      top: 3px; left: 3px;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .toggle-track.on .toggle-thumb { transform: translateX(28px); }
+
+    /* Tooltip / toast */
+    .toast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 999;
+      animation: toastIn 0.3s ease-out, toastOut 0.3s ease-in 2s forwards;
+    }
+    @keyframes toastOut {
+      to { opacity: 0; transform: translateX(-50%) translateY(10px); }
+    }
+
+    /* Error banner pulse */
+    @keyframes errorPulse {
+      0%,100% { border-color: rgba(248,113,113,0.4); }
+      50% { border-color: rgba(248,113,113,0.9); }
+    }
+    .error-banner { animation: errorPulse 2s ease-in-out infinite; }
+  </style>
+</head>
+<body>
+
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ─── CONFIGURATION ─────────────────────────────────────────────────────────────
+const BACKEND_URL = "https://sentiment-backend-crri.onrender.com";
+
+// ─── EMOJI DATA ─────────────────────────────────────────────────────────────────
+const EMOJIS = [
+  {
+    id: "rocket",
+    emoji: "🚀",
+    label: "Excited",
+    color: "#a78bfa",
+    glow: "rgba(167,139,250,0.5)",
+    gradient: "from-violet-600/30 to-purple-800/20",
+    border: "border-violet-500/40",
+    hoverBorder: "hover:border-violet-400/80",
+    barColor: "#a78bfa",
+  },
+  {
+    id: "sleeping",
+    emoji: "😴",
+    label: "Bored",
+    color: "#60a5fa",
+    glow: "rgba(96,165,250,0.5)",
+    gradient: "from-blue-600/30 to-sky-800/20",
+    border: "border-blue-500/40",
+    hoverBorder: "hover:border-blue-400/80",
+    barColor: "#60a5fa",
+  },
+  {
+    id: "thinking",
+    emoji: "🤔",
+    label: "Confused",
+    color: "#fb923c",
+    glow: "rgba(251,146,60,0.5)",
+    gradient: "from-orange-600/30 to-amber-800/20",
+    border: "border-orange-500/40",
+    hoverBorder: "hover:border-orange-400/80",
+    barColor: "#fb923c",
+  },
+  {
+    id: "fire",
+    emoji: "🔥",
+    label: "Loving it!",
+    color: "#f472b6",
+    glow: "rgba(244,114,182,0.5)",
+    gradient: "from-pink-600/30 to-rose-800/20",
+    border: "border-pink-500/40",
+    hoverBorder: "hover:border-pink-400/80",
+    barColor: "#f472b6",
+  },
+];
+
+// ─── PARTICLE BURST ─────────────────────────────────────────────────────────────
+function ParticleBurst({ x, y, color, onDone }) {
+  const particles = Array.from({ length: 12 }, (_, i) => {
+    const angle = (i / 12) * Math.PI * 2;
+    const dist = 50 + Math.random() * 40;
+    return {
+      tx: Math.cos(angle) * dist + "px",
+      ty: Math.sin(angle) * dist + "px",
+      color,
+    };
+  });
+
+  useEffect(() => {
+    const t = setTimeout(onDone, 700);
+    return () => clearTimeout(t);
+  }, []);
+
+  return (
+    <div style={{ position: "fixed", left: x, top: y, pointerEvents: "none", zIndex: 9999 }}>
+      {particles.map((p, i) => (
+        <div
+          key={i}
+          className="particle"
+          style={{
+            backgroundColor: p.color,
+            "--tx": p.tx,
+            "--ty": p.ty,
+            left: 0, top: 0,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ─── TOAST ──────────────────────────────────────────────────────────────────────
+function Toast({ message, emoji }) {
+  return (
+    <div className="toast">
+      <div className="glass-strong rounded-2xl px-6 py-3 flex items-center gap-3 shadow-2xl">
+        <span className="text-2xl">{emoji}</span>
+        <span className="text-white font-semibold text-sm">{message}</span>
+        <span className="text-green-400">✓</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── STUDENT VOTING VIEW ─────────────────────────────────────────────────────────
+function StudentView() {
+  const [toast, setToast] = useState(null);
+  const [particles, setParticles] = useState([]);
+  const [loadingId, setLoadingId] = useState(null);
+  const [error, setError] = useState(null);
+
+  const handleVote = async (emojiData, e) => {
+    if (loadingId) return;
+
+    // Particle burst at click position
+    const rect = e.currentTarget.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const pid = Date.now();
+    setParticles(p => [...p, { id: pid, x: cx, y: cy, color: emojiData.color }]);
+
+    setLoadingId(emojiData.id);
+    setError(null);
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/vote/${emojiData.id}`, { method: "POST" });
+      if (!res.ok) throw new Error("Server error");
+      setToast({ message: "Vote Cast!", emoji: emojiData.emoji });
+      setTimeout(() => setToast(null), 2400);
+    } catch (err) {
+      setError("Couldn't reach the server. Is the backend awake?");
+      setToast({ message: "Offline – vote saved locally", emoji: "⚡" });
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10 relative">
+      {/* Orbs */}
+      <div className="orb w-96 h-96 bg-violet-700/20 -top-24 -left-24" />
+      <div className="orb w-80 h-80 bg-pink-700/15 bottom-0 right-0" />
+
+      {/* Header */}
+      <div className="text-center mb-10 relative z-10">
+        <div className="inline-flex items-center gap-2 glass rounded-full px-4 py-2 mb-6">
+          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+          <span className="text-green-400 text-xs font-semibold tracking-widest uppercase">Session Live</span>
+        </div>
+        <h1 className="text-3xl md:text-4xl font-black text-white mb-3 leading-tight">
+          How are you feeling<br />
+          <span className="grad-text">about the class?</span>
+        </h1>
+        <p className="text-white/40 text-sm">Tap your emoji — your response is anonymous</p>
+      </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="glass error-banner border rounded-xl px-4 py-3 mb-6 flex items-center gap-3 max-w-sm w-full relative z-10">
+          <span className="text-red-400 text-lg">⚠️</span>
+          <p className="text-red-300 text-xs">{error}</p>
+        </div>
+      )}
+
+      {/* 2x2 Grid */}
+      <div className="grid grid-cols-2 gap-4 w-full max-w-sm relative z-10">
+        {EMOJIS.map((em) => (
+          <button
+            key={em.id}
+            className={`vote-btn glass-strong bg-gradient-to-br ${em.gradient} border ${em.border} ${em.hoverBorder} rounded-3xl p-6 flex flex-col items-center justify-center gap-3 cursor-pointer group`}
+            style={{ minHeight: "150px", boxShadow: loadingId === em.id ? `0 0 30px ${em.glow}` : "none" }}
+            onClick={(e) => handleVote(em, e)}
+            disabled={!!loadingId}
+          >
+            {loadingId === em.id ? (
+              <div className="w-14 h-14 rounded-full border-4 border-white/20 border-t-white animate-spin" />
+            ) : (
+              <span
+                className="text-6xl select-none"
+                style={{ filter: `drop-shadow(0 0 12px ${em.glow})`, transition: "transform 0.2s" }}
+              >
+                {em.emoji}
+              </span>
+            )}
+            <span className="text-white font-bold text-base tracking-wide">{em.label}</span>
+            <div
+              className="w-8 h-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+              style={{ background: em.color }}
+            />
+          </button>
+        ))}
+      </div>
+
+      {/* Footer */}
+      <p className="mt-10 text-white/20 text-xs relative z-10">
+        Powered by Live Sentiment Engine
+      </p>
+
+      {/* Toast */}
+      {toast && <Toast message={toast.message} emoji={toast.emoji} />}
+
+      {/* Particles */}
+      {particles.map(p => (
+        <ParticleBurst
+          key={p.id}
+          x={p.x} y={p.y} color={p.color}
+          onDone={() => setParticles(prev => prev.filter(x => x.id !== p.id))}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ─── ANIMATED BAR ────────────────────────────────────────────────────────────────
+function AnimatedBar({ value, max, color, glow, emoji, label, count }) {
+  const pct = max > 0 ? Math.max(4, (value / max) * 100) : 4;
+  return (
+    <div className="flex flex-col items-center gap-3 flex-1">
+      {/* Value label */}
+      <div
+        className="text-3xl font-black tabular-nums"
+        style={{ color, textShadow: `0 0 20px ${glow}` }}
+      >
+        {count}
+      </div>
+      {/* Bar container */}
+      <div className="relative w-full flex-1 flex items-end justify-center" style={{ minHeight: "200px" }}>
+        <div className="w-full relative" style={{ height: "200px" }}>
+          {/* Background track */}
+          <div className="absolute inset-0 rounded-2xl" style={{ background: "rgba(255,255,255,0.04)" }} />
+          {/* Filled bar */}
+          <div
+            className="absolute bottom-0 w-full rounded-2xl bar-fill"
+            style={{
+              height: `${pct}%`,
+              background: `linear-gradient(to top, ${color}, ${color}88)`,
+              boxShadow: `0 0 20px ${glow}, 0 0 40px ${glow}55`,
+            }}
+          />
+          {/* Shimmer line */}
+          <div
+            className="absolute w-full rounded-full"
+            style={{
+              bottom: `${pct}%`,
+              height: "2px",
+              background: color,
+              boxShadow: `0 0 10px ${color}`,
+              opacity: 0.9,
+            }}
+          />
+        </div>
+      </div>
+      {/* Emoji + label */}
+      <div className="text-4xl">{emoji}</div>
+      <div className="text-white/60 text-sm font-medium text-center">{label}</div>
+    </div>
+  );
+}
+
+// ─── PROJECTOR DASHBOARD VIEW ────────────────────────────────────────────────────
+function DashboardView() {
+  const [counts, setCounts] = useState({ rocket: 0, sleeping: 0, thinking: 0, fire: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [totalVotes, setTotalVotes] = useState(0);
+
+  const fetchResults = useCallback(async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/results`);
+      if (!res.ok) throw new Error("Bad response");
+      const data = await res.json();
+      setCounts(data);
+      const total = Object.values(data).reduce((a, b) => a + b, 0);
+      setTotalVotes(total);
+      setLastUpdated(new Date());
+      setError(null);
+    } catch (err) {
+      setError("Backend unreachable — retrying…");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchResults();
+    const interval = setInterval(fetchResults, 2000);
+    return () => clearInterval(interval);
+  }, [fetchResults]);
+
+  const maxCount = Math.max(...Object.values(counts), 1);
+
+  return (
+    <div className="min-h-screen flex flex-col px-6 py-8 relative overflow-hidden">
+      {/* Background orbs */}
+      <div className="orb w-[600px] h-[600px] bg-violet-700/10 -top-48 -left-48" />
+      <div className="orb w-[500px] h-[500px] bg-pink-700/8 -bottom-32 -right-32" />
+      <div className="orb w-[400px] h-[400px] bg-blue-700/8 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+
+      {/* Header */}
+      <div className="relative z-10 text-center mb-8">
+        <div className="inline-flex items-center gap-3 glass rounded-full px-5 py-2 mb-5">
+          <div className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
+          <span className="text-green-400 text-sm font-semibold tracking-widest uppercase">Live Feed</span>
+          {!loading && !error && (
+            <span className="text-white/30 text-xs ml-2">
+              Updated {lastUpdated?.toLocaleTimeString()}
+            </span>
+          )}
+        </div>
+
+        <h1 className="text-5xl md:text-7xl font-black grad-text mb-2">
+          Live Class Sentiment
+        </h1>
+        <p className="text-white/40 text-lg">
+          {loading ? "Connecting to backend…" : `${totalVotes} total votes cast`}
+        </p>
+      </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="glass error-banner border border-red-500/40 rounded-2xl px-5 py-3 mb-6 flex items-center gap-3 max-w-lg mx-auto w-full relative z-10">
+          <span className="text-2xl">⚠️</span>
+          <div>
+            <p className="text-red-300 font-semibold text-sm">{error}</p>
+            <p className="text-red-400/60 text-xs mt-0.5">Check that your Render backend is awake</p>
+          </div>
+        </div>
+      )}
+
+      {/* Stats row */}
+      <div className="grid grid-cols-4 gap-4 mb-6 relative z-10 max-w-4xl mx-auto w-full">
+        {EMOJIS.map(em => {
+          const count = counts[em.id] || 0;
+          const pct = totalVotes > 0 ? ((count / totalVotes) * 100).toFixed(1) : 0;
+          return (
+            <div key={em.id} className={`glass rounded-2xl p-4 text-center border ${em.border}`}>
+              <div className="text-xs text-white/40 uppercase tracking-wider mb-1">{em.label}</div>
+              <div className="text-2xl font-black" style={{ color: em.color }}>{count}</div>
+              <div className="text-xs text-white/30 mt-1">{pct}%</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Bar chart */}
+      <div className="glass-strong rounded-3xl p-8 relative z-10 flex-1 max-w-4xl mx-auto w-full" style={{ minHeight: "340px" }}>
+        {loading ? (
+          <div className="flex items-end gap-6 h-full">
+            {[1,2,3,4].map(i => (
+              <div key={i} className="flex-1 flex flex-col items-center gap-4">
+                <div className="w-full rounded-2xl shimmer" style={{ height: `${30 + i*15}%`, minHeight: "60px" }} />
+                <div className="w-16 h-4 rounded shimmer" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex gap-6 h-full items-stretch">
+            {EMOJIS.map(em => (
+              <AnimatedBar
+                key={em.id}
+                value={counts[em.id] || 0}
+                max={maxCount}
+                color={em.barColor}
+                glow={em.glow}
+                emoji={em.emoji}
+                label={em.label}
+                count={counts[em.id] || 0}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Footer ticker */}
+      <div className="relative z-10 mt-6 text-center text-white/20 text-xs">
+        Polling every 2 seconds · {BACKEND_URL}
+      </div>
+    </div>
+  );
+}
+
+// ─── MAIN APP ────────────────────────────────────────────────────────────────────
+function App() {
+  const [isDashboard, setIsDashboard] = useState(false);
+
+  return (
+    <div className="min-h-screen font-inter" style={{ background: "#020817" }}>
+
+      {/* Top nav */}
+      <nav className="glass fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">🎓</span>
+          <span className="text-white font-bold text-sm hidden sm:block">SentimentLive</span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="text-white/50 text-xs font-medium">{isDashboard ? "Student" : "Student"}</span>
+          <div
+            className={`toggle-track ${isDashboard ? "on" : ""}`}
+            onClick={() => setIsDashboard(v => !v)}
+            title={isDashboard ? "Switch to Student View" : "Switch to Dashboard"}
+          >
+            <div className="toggle-thumb" />
+          </div>
+          <span className="text-white/50 text-xs font-medium">{isDashboard ? "Dashboard" : "Dashboard"}</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-emerald-400/70 text-xs hidden sm:block">Connected</span>
+        </div>
+      </nav>
+
+      {/* View content */}
+      <div className="pt-16">
+        {isDashboard ? <DashboardView /> : <StudentView />}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
